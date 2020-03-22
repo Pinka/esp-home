@@ -28,6 +28,7 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     char *response = cJSON_Print(root);
 
     httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, response, -1); // -1 = use strlen()
 
     return ESP_OK;

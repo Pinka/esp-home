@@ -29,16 +29,18 @@ u8g2_t u8g2;
 
 void init_display();
 void update_display();
+void mandelbrot_set(u8g2_t *u8g2);
 
 void app_main()
 {
 	// Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+	esp_err_t ret = nvs_flash_init();
+	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+	{
+		ESP_ERROR_CHECK(nvs_flash_erase());
+		ret = nvs_flash_init();
+	}
+	ESP_ERROR_CHECK(ret);
 
 	// Init event loop
 	ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -46,9 +48,9 @@ void app_main()
 	// Init display
 	init_display();
 	update_display();
-        
+
 	webserver_init();
-    wifi_init();
+	wifi_init();
 
 	vTaskDelete(NULL);
 }
@@ -81,14 +83,72 @@ void init_display()
 void update_display()
 {
 
-	ESP_LOGI(TAG, "u8g2_DrawBox");
-	u8g2_DrawBox(&u8g2, 0, 26, 80, 6);
-	u8g2_DrawFrame(&u8g2, 0, 26, 100, 6);
+	// ESP_LOGI(TAG, "u8g2_DrawBox");
+	// u8g2_DrawBox(&u8g2, 0, 26, 80, 6);
+	// u8g2_DrawFrame(&u8g2, 0, 26, 100, 6);
 
-	ESP_LOGI(TAG, "u8g2_SetFont");
-	u8g2_SetFont(&u8g2, u8g2_font_ncenB14_tr);
-	ESP_LOGI(TAG, "u8g2_DrawStr");
-	u8g2_DrawStr(&u8g2, 2, 17, "Hello !");
+	// ESP_LOGI(TAG, "u8g2_SetFont");
+	// u8g2_SetFont(&u8g2, u8g2_font_ncenB14_tr);
+	// ESP_LOGI(TAG, "u8g2_DrawStr");
+	// u8g2_DrawStr(&u8g2, 2, 17, "Hello !");
+	// ESP_LOGI(TAG, "u8g2_SendBuffer");
+	// u8g2_SendBuffer(&u8g2);
+
+	mandelbrot_set(&u8g2);
+
+	u8g2_DrawPixel(&u8g2, 0, 0);
+	u8g2_DrawPixel(&u8g2, 0, 31);
+
+	u8g2_DrawPixel(&u8g2, 127, 0);
+	u8g2_DrawPixel(&u8g2, 127, 31);
+
+
 	ESP_LOGI(TAG, "u8g2_SendBuffer");
 	u8g2_SendBuffer(&u8g2);
+}
+
+void mandelbrot_set(u8g2_t *u8g2)
+{
+	unsigned ImageHeight = 32;
+	unsigned ImageWidth = 128;
+
+	double MinRe = -2.0;
+	double MaxRe = 1.0;
+	// double MinRe = -4.0;
+	// double MaxRe = 2.0;
+
+
+	double MinIm = -1.2;
+	double MaxIm = MinIm + (MaxRe - MinRe) * ImageHeight / ImageWidth;
+	double Re_factor = (MaxRe - MinRe) / (ImageWidth - 1);
+	double Im_factor = (MaxIm - MinIm) / (ImageHeight - 1);
+	unsigned MaxIterations = 50;
+
+	for (unsigned y = 0; y < ImageHeight; ++y)
+	{
+		double c_im = MaxIm - y * Im_factor;
+		for (unsigned x = 0; x < ImageWidth; ++x)
+		{
+			double c_re = MinRe + x * Re_factor;
+
+			double Z_re = c_re, Z_im = c_im;
+			bool isInside = true;
+			for (unsigned n = 0; n < MaxIterations; ++n)
+			{
+				double Z_re2 = Z_re * Z_re, Z_im2 = Z_im * Z_im;
+				if (Z_re2 + Z_im2 > 4)
+				{
+					isInside = false;
+					break;
+				}
+				Z_im = 2 * Z_re * Z_im + c_im;
+				Z_re = Z_re2 - Z_im2 + c_re;
+			}
+			if (isInside)
+			{
+				ESP_LOGI(TAG, "u8g2_DrawPixel %d, %d", x, y);
+				u8g2_DrawPixel(u8g2, x, y);
+			}
+		}
+	}
 }

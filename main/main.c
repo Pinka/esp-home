@@ -12,6 +12,7 @@
 #include <u8g2.h>
 #include <wifi.h>
 #include <webserver.h>
+#include <http.h>
 
 #include "sdkconfig.h"
 #include "u8g2_esp32_hal.h"
@@ -51,6 +52,7 @@ void app_main()
 
 	webserver_init();
 	wifi_init();
+	http_init();
 
 	vTaskDelete(NULL);
 }
@@ -146,7 +148,6 @@ void mandelbrot_set(u8g2_t *u8g2)
 			}
 			if (isInside)
 			{
-				ESP_LOGI(TAG, "u8g2_DrawPixel %d, %d", x, y);
 				u8g2_DrawPixel(u8g2, x, y);
 			}
 		}

@@ -1,3 +1,2 @@
-idf_component_register(SRCS "u8g2_esp32_hal.c"
-                            "main.c"
+idf_component_register(SRCS "main.c"
                     INCLUDE_DIRS ".")

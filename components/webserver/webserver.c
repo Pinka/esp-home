@@ -37,7 +37,8 @@ static esp_err_t root_get_handler(httpd_req_t *req)
 static const httpd_uri_t root = {
     .uri = "/",
     .method = HTTP_GET,
-    .handler = root_get_handler};
+    .handler = root_get_handler,
+};
 
 static httpd_handle_t start_webserver(void)
 {

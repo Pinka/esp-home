@@ -5,6 +5,7 @@
 #include <cJSON.h>
 
 #include "http.h"
+#include "sensors.h"
 
 #define MAX_HTTP_RECV_BUFFER 512
 static const char *TAG = "HTTP_CLIENT";
@@ -53,19 +54,17 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 
 void post()
 {
-    // Generate post data
-    int lower = 18;
-    int upper = 30;
+    // get sensor data
+    sensors_temp_data data = get_temperatures();
 
     cJSON *root, *temp;
     root = cJSON_CreateObject();
 
     cJSON_AddItemToObject(root, "address", cJSON_CreateString("Brivibas 118"));
     cJSON_AddItemToObject(root, "temp", temp = cJSON_CreateObject());
-    cJSON_AddNumberToObject(temp, "zone1", (esp_random() % (upper - lower + 1)) + lower);
-    cJSON_AddNumberToObject(temp, "zone2", (esp_random() % (upper - lower + 1)) + lower);
-    cJSON_AddNumberToObject(temp, "zone3", (esp_random() % (upper - lower + 1)) + lower);
-    cJSON_AddNumberToObject(temp, "zone4", (esp_random() % (upper - lower + 1)) + lower);
+    cJSON_AddNumberToObject(temp, "avg", data.avg);
+    cJSON_AddNumberToObject(temp, "min", data.min);
+    cJSON_AddNumberToObject(temp, "max", data.max);
 
     char *post_data = cJSON_Print(root);
 
@@ -118,7 +117,7 @@ void post()
     esp_http_client_cleanup(client);
 }
 
-void vTaskFunction(void *pvParameters)
+static void vTaskFunction(void *pvParameters)
 {
     /* Block for 1min. */
     const TickType_t xDelay = 60000 / portTICK_PERIOD_MS;

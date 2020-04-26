@@ -10,27 +10,26 @@
 #include "esp_event.h"
 
 #include <u8g2.h>
+
+#include <display.h>
 #include <wifi.h>
 #include <webserver.h>
 #include <http.h>
+#include <bluetooth.h>
+#include <sensors.h>
 
 #include "sdkconfig.h"
-#include "u8g2_esp32_hal.h"
 
-// SDA - GPIO21
-#define PIN_SDA 5
+static const char *TAG = "MAIN";
 
-// SCL - GPIO22
-#define PIN_SCL 4
+static void task_update_display(void *pvParameters);
 
-static const char *TAG = "ssd1306";
+static void sensors_read_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
-// a structure which will contain all the data for one display
-u8g2_t u8g2;
+static void display_update_temp_avg(float temp);
+static void display_update_humidity(uint8_t value);
 
-void init_display();
-void update_display();
-void mandelbrot_set(u8g2_t *u8g2);
+static TaskHandle_t displayTaskHandle = NULL;
 
 void app_main()
 {
@@ -46,110 +45,153 @@ void app_main()
 	// Init event loop
 	ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-	// Init display
-	init_display();
-	update_display();
+	// Register event to notify when sensors where read
+	ESP_ERROR_CHECK(esp_event_handler_register(SENSORS_EVENT, SENSORS_READ, &sensors_read_handler, NULL));
 
+	// Init display
+	display_init();
 	webserver_init();
 	wifi_init();
 	http_init();
+	// bluetooth_init();
+	sensors_init();
+
+	// Sensor data on display
+	xTaskCreate(
+		task_update_display,   /* Function that implements the task. */
+		"task_update_display", /* Text name for the task. */
+		2048,				   /* Stack size in words, not bytes. */
+		NULL,				   /* Parameter passed into the task. */
+		tskIDLE_PRIORITY + 1,  /* Priority at which the task is created. */
+		&displayTaskHandle);   /* Used to pass out the created task's handle. */
 
 	vTaskDelete(NULL);
 }
 
-void init_display()
+static void sensors_read_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-
-	u8g2_esp32_hal_t u8g2_esp32_hal = U8G2_ESP32_HAL_DEFAULT;
-	u8g2_esp32_hal.sda = PIN_SDA;
-	u8g2_esp32_hal.scl = PIN_SCL;
-	u8g2_esp32_hal_init(u8g2_esp32_hal);
-
-	u8g2_Setup_ssd1306_i2c_128x32_univision_f(
-		&u8g2,
-		U8G2_R0,
-		//u8x8_byte_sw_i2c,
-		u8g2_esp32_i2c_byte_cb,
-		u8g2_esp32_gpio_and_delay_cb); // init u8g2 structure
-	u8x8_SetI2CAddress(&u8g2.u8x8, 0x78);
-
-	ESP_LOGI(TAG, "u8g2_InitDisplay");
-	u8g2_InitDisplay(&u8g2); // send init sequence to the display, display is in sleep mode after this,
-
-	ESP_LOGI(TAG, "u8g2_SetPowerSave");
-	u8g2_SetPowerSave(&u8g2, 0); // wake up display
-	ESP_LOGI(TAG, "u8g2_ClearBuffer");
-	u8g2_ClearBuffer(&u8g2);
+	ESP_LOGI(TAG, "SENSORS EVENT FIRED");
+	vTaskResume(displayTaskHandle);
 }
 
-void update_display()
+static void task_update_display(void *pvParameters)
 {
+	const u8g2_t u8g2 = get_display_instance();
 
-	// ESP_LOGI(TAG, "u8g2_DrawBox");
-	// u8g2_DrawBox(&u8g2, 0, 26, 80, 6);
-	// u8g2_DrawFrame(&u8g2, 0, 26, 100, 6);
-
-	// ESP_LOGI(TAG, "u8g2_SetFont");
-	// u8g2_SetFont(&u8g2, u8g2_font_ncenB14_tr);
-	// ESP_LOGI(TAG, "u8g2_DrawStr");
-	// u8g2_DrawStr(&u8g2, 2, 17, "Hello !");
-	// ESP_LOGI(TAG, "u8g2_SendBuffer");
-	// u8g2_SendBuffer(&u8g2);
-
-	mandelbrot_set(&u8g2);
-
-	u8g2_DrawPixel(&u8g2, 0, 0);
-	u8g2_DrawPixel(&u8g2, 0, 31);
-
-	u8g2_DrawPixel(&u8g2, 127, 0);
-	u8g2_DrawPixel(&u8g2, 127, 31);
-
-
-	ESP_LOGI(TAG, "u8g2_SendBuffer");
-	u8g2_SendBuffer(&u8g2);
-}
-
-void mandelbrot_set(u8g2_t *u8g2)
-{
-	unsigned ImageHeight = 32;
-	unsigned ImageWidth = 128;
-
-	double MinRe = -2.0;
-	double MaxRe = 1.0;
-	// double MinRe = -4.0;
-	// double MaxRe = 2.0;
-
-
-	double MinIm = -1.2;
-	double MaxIm = MinIm + (MaxRe - MinRe) * ImageHeight / ImageWidth;
-	double Re_factor = (MaxRe - MinRe) / (ImageWidth - 1);
-	double Im_factor = (MaxIm - MinIm) / (ImageHeight - 1);
-	unsigned MaxIterations = 50;
-
-	for (unsigned y = 0; y < ImageHeight; ++y)
+	while (true)
 	{
-		double c_im = MaxIm - y * Im_factor;
-		for (unsigned x = 0; x < ImageWidth; ++x)
-		{
-			double c_re = MinRe + x * Re_factor;
+		vTaskSuspend(NULL);
 
-			double Z_re = c_re, Z_im = c_im;
-			bool isInside = true;
-			for (unsigned n = 0; n < MaxIterations; ++n)
-			{
-				double Z_re2 = Z_re * Z_re, Z_im2 = Z_im * Z_im;
-				if (Z_re2 + Z_im2 > 4)
-				{
-					isInside = false;
-					break;
-				}
-				Z_im = 2 * Z_re * Z_im + c_im;
-				Z_re = Z_re2 - Z_im2 + c_re;
-			}
-			if (isInside)
-			{
-				u8g2_DrawPixel(u8g2, x, y);
-			}
-		}
+		// get sensor data
+		sensors_temp_data data = get_temperatures();
+		uint8_t humidity = get_humidity();
+
+		display_update_temp_avg(data.avg);
+		display_update_humidity(humidity);
+
+		u8g2_SetDrawColor(&u8g2, 1);
+		u8g2_DrawPixel(&u8g2, 0, 0);
+		u8g2_UpdateDisplayArea(&u8g2, 0, 0, 1, 1);
+
+		// 0.5s delay
+		vTaskDelay(500 / portTICK_PERIOD_MS);
+
+		u8g2_SetDrawColor(&u8g2, 0);
+		u8g2_DrawPixel(&u8g2, 0, 0);
+		u8g2_UpdateDisplayArea(&u8g2, 0, 0, 1, 1);
 	}
+}
+
+static void display_update_temp_avg(float temp)
+{
+	u8g2_t u8g2 = get_display_instance();
+
+	char text_value[16];
+	u8g2_uint_t text_width = 0;
+
+	uint8_t tile_x_count = 7;
+	uint8_t tile_y_count = 2;
+	uint8_t tile_x = 16 - tile_x_count;
+	uint8_t tile_y = 0;
+
+	uint8_t area_width = tile_x_count * 8;
+	uint8_t area_height = tile_y_count * 8;
+
+	uint8_t text_x_offset = 5;
+	uint8_t text_x;
+	uint8_t text_y = 14;
+
+	// Convert value to string
+	sprintf(text_value, "%.1f", temp);
+
+	// Clear area in buffer
+	u8g2_SetDrawColor(&u8g2, 0);
+	u8g2_DrawBox(&u8g2, 128 - area_width, 0, 128, area_height);
+
+	// Set font
+	u8g2_SetFont(&u8g2, u8g2_font_profont22_mn);
+
+	// Calculate text x position
+	text_width = u8g2_GetStrWidth(&u8g2, text_value);
+	text_x = 128 - text_width - text_x_offset;
+
+	// Draw text
+	u8g2_SetDrawColor(&u8g2, 1);
+	u8g2_DrawStr(&u8g2, text_x, text_y, text_value);
+
+	// Draw °
+	u8g2_DrawCircle(&u8g2, 128 - 3, 2, 2, U8G2_DRAW_ALL);
+
+	// Update area on display
+	u8g2_UpdateDisplayArea(&u8g2, tile_x, tile_y, tile_x_count, tile_y_count);
+
+	ESP_LOGI(TAG, "Display update temp avg %.1f", temp);
+}
+
+static void display_update_humidity(uint8_t value)
+{
+	u8g2_t u8g2 = get_display_instance();
+
+	char text_value[16];
+	u8g2_uint_t text_width = 0;
+
+	uint8_t tile_x_count = 7;
+	uint8_t tile_y_count = 2;
+	uint8_t tile_x = 16 - tile_x_count;
+	uint8_t tile_y = 2;
+
+	uint8_t area_width = tile_x_count * 8;
+	uint8_t area_height = tile_y_count * 8;
+
+	uint8_t text_x_offset = 5;
+	uint8_t text_x;
+	uint8_t text_y = 32;
+
+	// Convert value to string
+	sprintf(text_value, "%d", value);
+
+	// Clear area in buffer
+	u8g2_SetDrawColor(&u8g2, 0);
+	u8g2_DrawBox(&u8g2, 128 - area_width, text_y - area_height, 128, area_height);
+
+	// Set font
+	u8g2_SetFont(&u8g2, u8g2_font_profont22_mn);
+
+	// Calculate text x position
+	text_width = u8g2_GetStrWidth(&u8g2, text_value);
+	text_x = 128 - text_width - text_x_offset;
+
+	// Draw text
+	u8g2_SetDrawColor(&u8g2, 1);
+	u8g2_DrawStr(&u8g2, text_x, text_y, text_value);
+
+	// Draw %
+	u8g2_DrawPixel(&u8g2, 128 - 5, 18);
+	u8g2_DrawPixel(&u8g2, 127, 22);
+	u8g2_DrawLine(&u8g2, 128 - 5, 22, 127, 18);
+
+	// Update area on display
+	u8g2_UpdateDisplayArea(&u8g2, tile_x, tile_y, tile_x_count, tile_y_count);
+
+	ESP_LOGI(TAG, "Display update humidity %d", value);
 }
